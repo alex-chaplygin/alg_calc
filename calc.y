@@ -1,7 +1,17 @@
 %{
-#define YYSTYPE double /* тип данных для стека yacc */
+  double mem[26];
+/* память для переменных 'a'..'z' */
 %}
-%token NUMBER
+%union {
+  /* тип стека */
+  double val;
+  /* фактическое значение */
+  int index; /* индекс в mem[] */
+}
+%token <val> NUMBER
+%token <index> VAR
+%type <val> expr
+%right '='
 %left '+' '-' /* левоассоциативные, одинаковый приоритет */
 %left '*' '/' /* левоассоциативные, более высокий приоритет */
 %left UNARYMINUS /* унарный минус */
@@ -9,17 +19,22 @@
 list:
 /* ничего */
 | list '\n'
-| list expr '\n'
-{ printf("\t%.8g\n", $2); }
+| list expr '\n' { printf("\t%.8g\n", $2); }
+| list error '\n' { yyerrok; }
 ;
 expr:
-NUMBER
-{ $$ = $1; }
+NUMBER { $$ = $1; }
+| VAR { $$ = mem[$1]; }
+| VAR '=' expr { $$ = mem[$1] = $3; }
 | '-' expr %prec UNARYMINUS {$$ = -$2; }
 | expr '+' expr { $$ = $1 + $3; }
 | expr '-' expr { $$ = $1 - $3; }
 | expr '*' expr { $$ = $1 * $3; }
-| expr '/' expr { $$ = $1 / $3; }
+| expr '/' expr {
+  if ($3 == 0.0)
+    warning("division by zero", "");
+  else
+    $$ = $1 / $3; }
 | '(' expr ')' { $$ = $2; }
 %%
 /* конец грамматики */
@@ -46,6 +61,10 @@ yylex()
     ungetc(c, stdin);
     scanf("%lf", &yylval);
     return NUMBER;
+  }
+  if (islower(c)) {
+    yylval.index = c - 'a'; /* только ASCII */
+    return VAR;
   }
   if (c == '\n')
     lineno++;
